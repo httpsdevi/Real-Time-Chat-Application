@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Real-Time Chat App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .message-bubble {
+            max-width: 75%;
+            animation: fadeIn 0.3s ease-out;
+        }
+        .user-avatar {
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 9999px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .chat-header-gradient {
+            background-image: linear-gradient(to right, #2d3748, #4a5568);
+        }
+        #messages-container {
+            background-image: url('https://placehold.co/1200x800/e5e7eb/525252?text=Chat+Background');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .date-separator {
+            display: flex;
+            align-items: center;
+            text-align: center;
+            color: #6b7280;
+            margin: 1.5rem 0;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .date-separator::before,
+        .date-separator::after {
+            content: '';
+            flex: 1;
+            border-bottom: 1px solid #d1d5db;
+        }
+        .date-separator:not(:empty)::before {
+            margin-right: .5rem;
+        }
+        .date-separator:not(:empty)::after {
+            margin-left: .5rem;
+        }
+
+        /* Typing Indicator Animation */
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: #9ca3af;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: pulse 1.4s infinite ease-in-out both;
+        }
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes pulse {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1.0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="loading-spinner" class="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-75 z-50">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-gray-900"></div>
+    </div>
+
+    <div id="main-app" class="chat-container bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col h-[90vh] md:h-[80vh] w-full max-w-4xl opacity-0 transition-opacity duration-500">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-4 text-white shadow-md chat-header-gradient">
+            <h1 class="text-xl md:text-2xl font-semibold">Real-Time Group Chat</h1>
+            <div class="flex items-center text-sm md:text-base space-x-2">
+                <span id="user-info" class="font-medium text-gray-300 cursor-pointer hover:underline transition-colors"></span>
+                <button id="summarize-button" class="bg-blue-500 text-white px-3 py-1 rounded-full text-xs md:text-sm font-semibold shadow-lg hover:bg-blue-600 transition-colors">
+                    ✨ Summarize Chat
+                </button>
+                <button id="clear-button" class="bg-red-500 text-white px-3 py-1 rounded-full text-xs md:text-sm font-semibold shadow-lg hover:bg-red-600 transition-colors">
+                    Clear Chat
+                </button>
+            </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div id="messages-container" class="flex-grow p-4 md:p-6 overflow-y-auto space-y-4">
+            <!-- Messages will be injected here by JavaScript -->
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="typing-indicator" class="p-2 text-sm text-gray-500 italic flex items-center space-x-2 hidden">
+            <span id="typing-users-text"></span>
+            <div class="flex">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-4 bg-gray-100 border-t border-gray-300 flex space-x-2 md:space-x-4">
+            <input type="text" id="message-input" placeholder="Type your message here..." class="flex-grow rounded-full px-4 py-2 border border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-shadow">
+            <button id="send-button" class="bg-gray-800 text-white px-6 py-2 rounded-full font-semibold shadow-lg hover:bg-gray-700 transition-colors">
+                Send
+            </button>
+        </div>
+    </div>
+    
+    <!-- User ID Modal -->
+    <div id="user-id-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 shadow-xl w-11/12 max-w-sm">
+            <h2 class="text-xl font-semibold mb-4">Your User ID</h2>
+            <p id="full-user-id" class="break-all font-mono text-gray-700 p-2 bg-gray-100 rounded"></p>
+            <div class="flex justify-end space-x-2 mt-4">
+                <button id="copy-button" class="bg-blue-500 text-white px-4 py-2 rounded-full font-semibold hover:bg-blue-600 transition-colors">
+                    Copy
+                </button>
+                <button id="close-modal-button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-full font-semibold hover:bg-gray-400 transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Clear Chat Confirmation Modal -->
+    <div id="clear-chat-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 shadow-xl w-11/12 max-w-sm text-center">
+            <h2 class="text-xl font-semibold mb-2">Are you sure?</h2>
+            <p class="text-gray-700 mb-6">This action will permanently delete all messages from the chat.</p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirm-clear-button" class="bg-red-500 text-white px-6 py-2 rounded-full font-semibold hover:bg-red-600 transition-colors">
+                    Yes, Clear Chat
+                </button>
+                <button id="cancel-clear-button" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-full font-semibold hover:bg-gray-400 transition-colors">
+                    No, Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Modal -->
+    <div id="summary-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-xl p-6 shadow-xl w-11/12 max-w-xl">
+            <h2 class="text-xl font-semibold mb-4">Chat Summary</h2>
+            <div id="summary-content" class="text-gray-700 p-2 bg-gray-100 rounded-lg max-h-80 overflow-y-auto">
+                <div id="summary-loading" class="flex justify-center items-center">
+                    <div class="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-900"></div>
+                </div>
+                <p id="summary-text" class="hidden"></p>
+            </div>
+            <div class="flex justify-end space-x-2 mt-4">
+                <button id="close-summary-button" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-full font-semibold hover:bg-gray-400 transition-colors">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, serverTimestamp, getDocs, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // Use debug logging for Firestore
+        setLogLevel('Debug');
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let auth, db, userId;
+        const messagesContainer = document.getElementById('messages-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const mainApp = document.getElementById('main-app');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const userInfoSpan = document.getElementById('user-info');
+        const typingIndicator = document.getElementById('typing-indicator');
+        const typingUsersText = document.getElementById('typing-users-text');
+        const clearButton = document.getElementById('clear-button');
+        const userIdModal = document.getElementById('user-id-modal');
+        const fullUserIdSpan = document.getElementById('full-user-id');
+        const copyButton = document.getElementById('copy-button');
+        const closeModalButton = document.getElementById('close-modal-button');
+        const clearChatModal = document.getElementById('clear-chat-modal');
+        const confirmClearButton = document.getElementById('confirm-clear-button');
+        const cancelClearButton = document.getElementById('cancel-clear-button');
+        const summarizeButton = document.getElementById('summarize-button');
+        const summaryModal = document.getElementById('summary-modal');
+        const summaryLoading = document.getElementById('summary-loading');
+        const summaryText = document.getElementById('summary-text');
+        const closeSummaryButton = document.getElementById('close-summary-button');
+
+        let typingTimeout;
+        let lastMessageDate = '';
+        let messagesCache = [];
+
+        // --- Gemini API Configurations ---
+        const apiKey = ""; // API key is provided by the runtime
+        const geminiTextApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        const geminiTtsApiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`;
+        
+        // --- Firebase Setup and Authentication ---
+        const setupFirebase = async () => {
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                
+                // Authenticate the user
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                await new Promise(resolve => {
+                    const unsubscribe = onAuthStateChanged(auth, user => {
+                        if (user) {
+                            userId = user.uid;
+                            userInfoSpan.textContent = `User ID: ${userId.substring(0, 8)}...`;
+                            console.log("User authenticated with UID:", userId);
+                            resolve();
+                            unsubscribe();
+                        }
+                    });
+                });
+                
+                listenForMessages();
+                listenForTyping();
+
+                loadingSpinner.style.display = 'none';
+                mainApp.style.opacity = 1;
+
+            } catch (error) {
+                console.error("Firebase setup failed:", error);
+                loadingSpinner.innerHTML = '<p class="text-red-600">Failed to load. Check console for details.</p>';
+            }
+        };
+
+        // --- UI Rendering Functions ---
+
+        // Generates a consistent color based on user ID
+        const getUserColor = (id) => {
+            let hash = 0;
+            for (let i = 0; i < id.length; i++) {
+                hash = id.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const colors = [
+                'bg-blue-500', 'bg-green-500', 'bg-red-500', 'bg-yellow-500', 'bg-purple-500',
+                'bg-pink-500', 'bg-indigo-500', 'bg-teal-500', 'bg-orange-500'
+            ];
+            return colors[Math.abs(hash) % colors.length];
+        };
+
+        // Renders a message bubble
+        const renderMessage = (message, isUserMessage) => {
+            const messageDate = message.timestamp ? new Date(message.timestamp.toDate()).toLocaleDateString() : '';
+            if (messageDate && messageDate !== lastMessageDate) {
+                const separatorDiv = document.createElement('div');
+                separatorDiv.className = 'date-separator';
+                separatorDiv.textContent = messageDate;
+                messagesContainer.appendChild(separatorDiv);
+                lastMessageDate = messageDate;
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isUserMessage ? 'justify-end' : 'justify-start'}`;
+
+            const bubbleClass = isUserMessage
+                ? 'bg-gray-800 text-white rounded-tl-xl rounded-bl-xl rounded-tr-xl'
+                : 'bg-gray-200 text-gray-900 rounded-tr-xl rounded-br-xl rounded-tl-xl';
+
+            const userColor = getUserColor(message.userId);
+
+            const timestamp = message.timestamp ? new Date(message.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...';
+
+            messageDiv.innerHTML = `
+                <div class="message-bubble ${bubbleClass} p-3 shadow-md">
+                    <div class="flex items-center space-x-2">
+                        <div class="user-avatar ${userColor}"></div>
+                        <span class="font-bold text-sm ${isUserMessage ? 'text-gray-300' : 'text-gray-600'}">
+                            ${isUserMessage ? 'You' : `${message.userId.substring(0, 8)}...`}
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            ${timestamp}
+                        </span>
+                        <button class="tts-button flex-shrink-0 text-sm ml-2 bg-gray-500 text-white p-1 rounded-full hover:bg-gray-600 transition-colors" data-message-text="${message.text}">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+                                <path fill-rule="evenodd" d="M11.472 1.637a.75.75 0 0 1 .756 0l4.5 2.25a.75.75 0 0 1 .372.648V19.25a.75.75 0 0 1-.372.648l-4.5 2.25a.75.75 0 0 1-.756 0l-4.5-2.25A.75.75 0 0 1 6 19.25V4.535a.75.75 0 0 1 .372-.648l4.5-2.25ZM12 4.187 8.25 6.035V18.187l3.75 1.848V4.187Z" clip-rule="evenodd" />
+                                <path d="m19.22 8.948-2.618-2.617a.75.75 0 0 0-1.06 1.06L17.159 9H13.5a.75.75 0 0 0 0 1.5h3.659l-1.557 1.557a.75.75 0 0 0 1.06 1.06l2.618-2.618a.75.75 0 0 0 0-1.06ZM5.98 8.948a.75.75 0 0 0-1.06 1.06L5.535 12h3.659a.75.75 0 0 0 0-1.5H5.535l-1.557-1.557a.75.75 0 0 0-1.06 1.06l2.618 2.618a.75.75 0 0 0 1.06 0l2.618-2.618a.75.75 0 1 0-1.06-1.06L6.535 9H9.194l-1.557-1.557a.75.75 0 0 0-1.06-1.06Z" />
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="mt-1">${message.text}</p>
+                </div>
+            `;
+            messagesContainer.appendChild(messageDiv);
+        };
+
+        const autoScroll = () => {
+             messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        };
+
+        // --- Firestore Operations ---
+
+        // Listen for new messages in real-time
+        const listenForMessages = () => {
+            const chatCollectionPath = `/artifacts/${appId}/public/data/messages`;
+            const messagesQuery = query(collection(db, chatCollectionPath));
+
+            onSnapshot(messagesQuery, (querySnapshot) => {
+                const messages = [];
+                querySnapshot.forEach((doc) => {
+                    messages.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Sort messages in-memory to follow the instruction of not using orderBy
+                messages.sort((a, b) => {
+                    const aTimestamp = a.timestamp ? a.timestamp.toMillis() : 0;
+                    const bTimestamp = b.timestamp ? b.timestamp.toMillis() : 0;
+                    return aTimestamp - bTimestamp;
+                });
+                
+                messagesCache = messages; // Cache messages for summarization
+
+                messagesContainer.innerHTML = '';
+                lastMessageDate = ''; // Reset date tracker
+                messages.forEach(message => renderMessage(message, message.userId === userId));
+                
+                // Add event listeners for TTS buttons
+                document.querySelectorAll('.tts-button').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const messageText = e.currentTarget.dataset.messageText;
+                        readMessage(messageText, e.currentTarget);
+                    });
+                });
+                
+                autoScroll();
+            }, (error) => {
+                console.error("Error listening for messages:", error);
+            });
+        };
+        
+        // Listen for real-time typing status
+        const listenForTyping = () => {
+            const typingCollectionPath = `/artifacts/${appId}/public/data/typing`;
+            const typingRef = doc(db, typingCollectionPath, 'status');
+            
+            onSnapshot(typingRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const typingUsers = Object.keys(data).filter(uid => uid !== userId && data[uid] === true);
+                    if (typingUsers.length > 0) {
+                        const userNames = typingUsers.map(uid => `${uid.substring(0, 8)}...`);
+                        typingUsersText.textContent = `${userNames.join(', ')} ${userNames.length > 1 ? 'are' : 'is'} typing...`;
+                        typingIndicator.classList.remove('hidden');
+                        autoScroll();
+                    } else {
+                        typingIndicator.classList.add('hidden');
+                    }
+                } else {
+                     typingIndicator.classList.add('hidden');
+                }
+            }, (error) => {
+                 console.error("Error listening for typing status:", error);
+            });
+        };
+
+        // Send a message to Firestore
+        const sendMessage = async () => {
+            const messageText = messageInput.value.trim();
+            if (messageText === "") return;
+
+            try {
+                const chatCollectionPath = `/artifacts/${appId}/public/data/messages`;
+                await addDoc(collection(db, chatCollectionPath), {
+                    text: messageText,
+                    userId: userId,
+                    timestamp: serverTimestamp()
+                });
+                messageInput.value = '';
+                updateTypingStatus(false);
+            } catch (e) {
+                console.error("Error adding document: ", e);
+            }
+        };
+
+        // Update a user's typing status in Firestore
+        const updateTypingStatus = async (isTyping) => {
+            const typingCollectionPath = `/artifacts/${appId}/public/data/typing`;
+            const typingRef = doc(db, typingCollectionPath, 'status');
+
+            try {
+                // Use a field-level update to avoid overwriting other users
+                await setDoc(typingRef, { [userId]: isTyping }, { merge: true });
+            } catch (e) {
+                console.error("Error updating typing status: ", e);
+            }
+        };
+
+        // Clear all messages from the database
+        const clearChat = async () => {
+             clearChatModal.classList.remove('hidden');
+        };
+        
+        const performClearChat = async () => {
+            const chatCollectionPath = `/artifacts/${appId}/public/data/messages`;
+            const q = collection(db, chatCollectionPath);
+            try {
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) {
+                    const batch = writeBatch(db);
+                    snapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    console.log("Chat cleared successfully.");
+                }
+            } catch (e) {
+                console.error("Error clearing chat:", e);
+            } finally {
+                clearChatModal.classList.add('hidden');
+            }
+        };
+
+        // --- Gemini API Functions ---
+
+        /**
+         * Converts a Base64 string to an ArrayBuffer.
+         * @param {string} base64 The Base64 encoded string.
+         * @returns {ArrayBuffer} The decoded ArrayBuffer.
+         */
+        const base64ToArrayBuffer = (base64) => {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        };
+
+        /**
+         * Converts PCM audio data to a WAV Blob.
+         * @param {Int16Array} pcmData The PCM audio data.
+         * @param {number} sampleRate The sample rate of the audio.
+         * @returns {Blob} The WAV audio Blob.
+         */
+        const pcmToWav = (pcmData, sampleRate) => {
+            const buffer = new ArrayBuffer(44 + pcmData.byteLength);
+            const view = new DataView(buffer);
+
+            // WAV header
+            writeString(view, 0, 'RIFF'); // RIFF identifier
+            view.setUint32(4, 36 + pcmData.byteLength, true); // file length
+            writeString(view, 8, 'WAVE'); // RIFF type
+            writeString(view, 12, 'fmt '); // format chunk identifier
+            view.setUint32(16, 16, true); // format chunk length
+            view.setUint16(20, 1, true); // sample format (1 = PCM)
+            view.setUint16(22, 1, true); // number of channels
+            view.setUint32(24, sampleRate, true); // sample rate
+            view.setUint32(28, sampleRate * 2, true); // byte rate
+            view.setUint16(32, 2, true); // block align
+            view.setUint16(34, 16, true); // bits per sample
+            writeString(view, 36, 'data'); // data chunk identifier
+            view.setUint32(40, pcmData.byteLength, true); // data chunk length
+
+            // Write PCM data
+            for (let i = 0; i < pcmData.length; i++) {
+                view.setInt16(44 + i * 2, pcmData[i], true);
+            }
+            return new Blob([view], { type: 'audio/wav' });
+        };
+        
+        const writeString = (view, offset, string) => {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        };
+        
+        // Function to handle exponential backoff for API calls
+        const retryWithBackoff = async (fn, retries = 3, delay = 1000) => {
+            try {
+                return await fn();
+            } catch (error) {
+                if (retries > 0) {
+                    await new Promise(res => setTimeout(res, delay));
+                    return retryWithBackoff(fn, retries - 1, delay * 2);
+                } else {
+                    throw error;
+                }
+            }
+        };
+
+        // Reads a message aloud using Gemini's TTS API
+        const readMessage = async (text, button) => {
+            const originalButtonContent = button.innerHTML;
+            button.innerHTML = '<div class="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>';
+            button.disabled = true;
+
+            const payload = {
+                contents: [{ parts: [{ text: text }] }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+                    }
+                },
+                model: "gemini-2.5-flash-preview-tts"
+            };
+
+            const fn = async () => {
+                const response = await fetch(geminiTtsApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return await response.json();
+            };
+
+            try {
+                const apiResponse = await retryWithBackoff(fn);
+                const part = apiResponse?.candidates?.[0]?.content?.parts?.[0];
+                const audioData = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType;
+
+                if (audioData && mimeType && mimeType.startsWith("audio/")) {
+                    const pcmData = base64ToArrayBuffer(audioData);
+                    const pcm16 = new Int16Array(pcmData);
+                    const wavBlob = pcmToWav(pcm16, 24000); // Sample rate is 24000 for Gemini TTS
+                    const audioUrl = URL.createObjectURL(wavBlob);
+                    const audio = new Audio(audioUrl);
+                    audio.play();
+                } else {
+                    console.error("Invalid audio data received.");
+                }
+            } catch (e) {
+                console.error("Error reading message:", e);
+            } finally {
+                button.innerHTML = originalButtonContent;
+                button.disabled = false;
+            }
+        };
+        
+        // Summarizes the chat using Gemini's text-to-text API
+        const summarizeChat = async () => {
+            summaryModal.classList.remove('hidden');
+            summaryLoading.classList.remove('hidden');
+            summaryText.classList.add('hidden');
+            
+            if (messagesCache.length === 0) {
+                 summaryLoading.classList.add('hidden');
+                 summaryText.textContent = "There are no messages to summarize.";
+                 summaryText.classList.remove('hidden');
+                 return;
+            }
+            
+            const conversation = messagesCache.map(msg => {
+                const username = msg.userId === userId ? 'You' : `User(${msg.userId.substring(0, 8)}...)`;
+                return `${username}: ${msg.text}`;
+            }).join('\n');
+            
+            const userPrompt = `Summarize the following conversation concisely:\n\n${conversation}`;
+            
+            const payload = {
+                contents: [{ parts: [{ text: userPrompt }] }],
+                generationConfig: {
+                    temperature: 0.2
+                }
+            };
+
+            const fn = async () => {
+                const response = await fetch(geminiTextApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                return await response.json();
+            };
+
+            try {
+                const apiResponse = await retryWithBackoff(fn);
+                const summary = apiResponse?.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to generate summary.";
+                summaryText.textContent = summary;
+            } catch (e) {
+                console.error("Error summarizing chat:", e);
+                summaryText.textContent = "Failed to generate summary. Please try again later.";
+            } finally {
+                summaryLoading.classList.add('hidden');
+                summaryText.classList.remove('hidden');
+            }
+        };
+
+
+        // --- Event Listeners ---
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        messageInput.addEventListener('input', () => {
+            updateTypingStatus(true);
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                updateTypingStatus(false);
+            }, 1000); // 1-second delay after typing stops
+        });
+        clearButton.addEventListener('click', clearChat);
+        userInfoSpan.addEventListener('click', () => {
+            fullUserIdSpan.textContent = userId;
+            userIdModal.classList.remove('hidden');
+        });
+        closeModalButton.addEventListener('click', () => {
+            userIdModal.classList.add('hidden');
+        });
+        copyButton.addEventListener('click', () => {
+            document.execCommand('copy');
+            copyButton.textContent = 'Copied!';
+            setTimeout(() => copyButton.textContent = 'Copy', 1500);
+        });
+        
+        // Clear chat modal event listeners
+        confirmClearButton.addEventListener('click', performClearChat);
+        cancelClearButton.addEventListener('click', () => {
+             clearChatModal.classList.add('hidden');
+        });
+
+        // Summary modal event listeners
+        summarizeButton.addEventListener('click', summarizeChat);
+        closeSummaryButton.addEventListener('click', () => {
+            summaryModal.classList.add('hidden');
+        });
+
+        // Start the application
+        setupFirebase();
+    </script>
+</body>
+</html>
